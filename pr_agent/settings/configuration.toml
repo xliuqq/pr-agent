@@ -285,6 +285,19 @@ push_commands = [
     "/review",
 ]
 
+[gitee]
+url = "https://gitee.com"
+handle_push_trigger = false
+pr_commands = [
+    "/describe",
+    "/review",
+    "/improve",
+]
+push_commands = [
+    "/describe",
+    "/review",
+]
+
 [bitbucket_app]
 pr_commands = [
     "/describe --pr_description.final_update_message=false",
