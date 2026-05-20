@@ -112,7 +112,6 @@ class GiteeProvider(GitProvider):
         self.pr_commits = None
         self.last_commit = None
         self.base_sha = None
-        self.base_ref = None
 
         # Parse URL and initialize - Gitee Provider only supports Pull Requests
         if "pulls" in url or "pull" in url:
@@ -224,7 +223,6 @@ class GiteeProvider(GitProvider):
         if self.pr.head:
             self.sha = self.pr.head.sha
             self.base_sha = self.pr.base.sha if self.pr.base else ''
-            self.base_ref = self.pr.base.ref if self.pr.base else ''
         
         # Fetch changed files
         self.git_files = self._api_request(

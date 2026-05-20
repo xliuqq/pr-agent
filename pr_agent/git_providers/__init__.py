@@ -10,6 +10,7 @@ from pr_agent.git_providers.gerrit_provider import GerritProvider
 from pr_agent.git_providers.git_provider import GitProvider
 from pr_agent.git_providers.gitea_provider import GiteaProvider
 from pr_agent.git_providers.gitee_provider import GiteeProvider
+from pr_agent.git_providers.gitee_enterprise_provider import GiteeEnterpriseProvider
 from pr_agent.git_providers.github_provider import GithubProvider
 from pr_agent.git_providers.gitlab_provider import GitLabProvider
 from pr_agent.git_providers.local_git_provider import LocalGitProvider
@@ -24,7 +25,8 @@ _GIT_PROVIDERS = {
     'local': LocalGitProvider,
     'gerrit': GerritProvider,
     'gitea': GiteaProvider,
-    'gitee': GiteeProvider  # Added Gitee support
+    'gitee': GiteeProvider,  # Gitee Community Edition
+    'gitee_enterprise': GiteeEnterpriseProvider  # Gitee Enterprise Edition
 }
 
 

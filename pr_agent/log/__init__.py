@@ -46,6 +46,25 @@ def setup_logger(level: str = "INFO", fmt: LoggingFormat = LoggingFormat.CONSOLE
         logger.remove(None)
         logger.add(sys.stdout, level=level, colorize=True, filter=inv_analytics_filter)
 
+    # Add file logging if LOG_FILE is configured
+    log_file_path = get_settings().get("CONFIG.LOG_FILE", "") or os.getenv("LOG_FILE", "")
+    if log_file_path:
+        # Create directory if it doesn't exist
+        log_dir = os.path.dirname(log_file_path)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        
+        logger.add(
+            log_file_path,
+            level=level,
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+            colorize=False,
+            rotation="10 MB",  # Rotate when file reaches 10 MB
+            retention="7 days",  # Keep logs for 7 days
+            compression="zip",  # Compress rotated files
+            enqueue=True,  # Thread-safe logging
+        )
+
     log_folder = get_settings().get("CONFIG.ANALYTICS_FOLDER", "")
     if log_folder:
         pid = os.getpid()
