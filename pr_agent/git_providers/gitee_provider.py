@@ -78,7 +78,6 @@ class GiteeProvider(GitProvider):
         # Gitee configuration
         self.base_url = get_settings().get("GITEE.URL", "https://gitee.com").rstrip("/")
         self.pr_url = ""
-        self.issue_url = ""
 
         # Get access token
         self.gitee_access_token = get_settings().get("GITEE.PERSONAL_ACCESS_TOKEN", None)
@@ -100,10 +99,8 @@ class GiteeProvider(GitProvider):
         self.owner = None
         self.repo = None
         self.pr_number = None
-        self.issue_number = None
         self.max_comment_chars = 65000
         self.enabled_pr = False
-        self.enabled_issue = False
         self.temp_comments = []
         self.pr = None
         self.git_files = []
@@ -117,16 +114,17 @@ class GiteeProvider(GitProvider):
         self.base_sha = None
         self.base_ref = None
 
-        # Parse URL and initialize
+        # Parse URL and initialize - Gitee Provider only supports Pull Requests
         if "pulls" in url or "pull" in url:
             self.pr_url = url
             self._set_repo_and_owner_from_pr()
             self.enabled_pr = True
             self._fetch_pr_data()
         elif "issues" in url:
-            self.issue_url = url
-            self._set_repo_and_owner_from_issue()
-            self.enabled_issue = True
+            # Gitee Provider does not support Issues
+            error_msg = "Gitee Provider does not support Issue URLs. Please use a Pull Request URL instead."
+            self.logger.error(error_msg)
+            raise NotImplementedError(error_msg)
         else:
             self.logger.error(f"Invalid Gitee URL: {url}")
             raise ValueError(f"Invalid Gitee URL: {url}")
@@ -193,28 +191,6 @@ class GiteeProvider(GitProvider):
 
         return owner, repo, pr_number
 
-    def _parse_issue_url(self, issue_url: str) -> Tuple[str, str, int]:
-        """
-        Parse Gitee Issue URL to extract owner, repo, and issue number
-        
-        Gitee Issue URL format: https://gitee.com/{owner}/{repo}/issues/{number}
-        """
-        parsed_url = urlparse(issue_url)
-        path_parts = parsed_url.path.strip('/').split('/')
-        
-        if len(path_parts) < 4 or path_parts[2] != 'issues':
-            raise ValueError(f"The provided URL does not appear to be a Gitee issue URL: {issue_url}")
-
-        try:
-            issue_number = int(path_parts[3])
-        except ValueError as e:
-            raise ValueError(f"Unable to convert issue number to integer: {path_parts[3]}") from e
-
-        owner = path_parts[0]
-        repo = path_parts[1]
-
-        return owner, repo, issue_number
-
     def _set_repo_and_owner_from_pr(self):
         """Extract owner and repo from the PR URL"""
         try:
@@ -225,21 +201,6 @@ class GiteeProvider(GitProvider):
             self.logger.info(f"Gitee PR - Owner: {self.owner}, Repo: {self.repo}, PR Number: {self.pr_number}")
         except ValueError as e:
             self.logger.error(f"Error parsing PR URL: {str(e)}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error: {str(e)}")
-            raise
-
-    def _set_repo_and_owner_from_issue(self):
-        """Extract owner and repo from the issue URL"""
-        try:
-            owner, repo, issue_number = self._parse_issue_url(self.issue_url)
-            self.owner = owner
-            self.repo = repo
-            self.issue_number = issue_number
-            self.logger.info(f"Gitee Issue - Owner: {self.owner}, Repo: {self.repo}, Issue Number: {self.issue_number}")
-        except ValueError as e:
-            self.logger.error(f"Error parsing issue URL: {str(e)}")
             raise
         except Exception as e:
             self.logger.error(f"Unexpected error: {str(e)}")
@@ -363,8 +324,15 @@ class GiteeProvider(GitProvider):
         return self.pr_url
 
     def get_issue_url(self) -> str:
-        """Get Issue URL"""
-        return self.issue_url
+        """
+        Get Issue URL - Not supported for Gitee Provider.
+        
+        Raises:
+            NotImplementedError: Always raised as Gitee Provider does not support Issues
+        """
+        error_msg = "get_issue_url() is not supported for Gitee Provider. Gitee Provider only supports Pull Requests."
+        self.logger.error(error_msg)
+        raise NotImplementedError(error_msg)
 
     def get_latest_commit_url(self) -> str:
         """Get latest commit URL"""
@@ -399,16 +367,14 @@ class GiteeProvider(GitProvider):
             self.logger.debug(f"Skipping publish_comment for temporary comment")
             return None
 
-        # Determine which endpoint to use
-        if self.enabled_issue:
-            index = self.issue_number
-            endpoint = f"/repos/{self.owner}/{self.repo}/issues/{index}/comments"
-        elif self.enabled_pr:
-            index = self.pr_number
-            endpoint = f"/repos/{self.owner}/{self.repo}/pulls/{index}/comments"
-        else:
-            self.logger.error("Neither PR nor issue URL provided.")
-            return None
+        # Determine which endpoint to use - Gitee Provider only supports PRs
+        if not self.enabled_pr:
+            error_msg = "Cannot publish comment: Gitee Provider only supports Pull Request comments, not Issue comments."
+            self.logger.error(error_msg)
+            raise NotImplementedError(error_msg)
+        
+        index = self.pr_number
+        endpoint = f"/repos/{self.owner}/{self.repo}/pulls/{index}/comments"
 
         comment = self.limit_output_characters(comment, self.max_comment_chars)
         
@@ -449,11 +415,13 @@ class GiteeProvider(GitProvider):
                 self.logger.error("Comment ID not found")
                 return None
             
-            # Determine endpoint based on comment type
-            if self.enabled_pr:
-                endpoint = f"/repos/{self.owner}/{self.repo}/pulls/comments/{comment_id}"
-            else:
-                endpoint = f"/repos/{self.owner}/{self.repo}/issues/comments/{comment_id}"
+            # Determine endpoint based on comment type - Gitee Provider only supports PR comments
+            if not self.enabled_pr:
+                error_msg = "Cannot edit comment: Gitee Provider only supports Pull Request comments."
+                self.logger.error(error_msg)
+                raise NotImplementedError(error_msg)
+            
+            endpoint = f"/repos/{self.owner}/{self.repo}/pulls/comments/{comment_id}"
             
             response = self._api_request('PATCH', endpoint, json={"body": body})
             return response is not None
@@ -820,20 +788,20 @@ class GiteeProvider(GitProvider):
 
     def get_issue_comments(self) -> List[Dict[str, Any]]:
         """
-        Get all comments on the PR or Issue
+        Get all comments on the PR - Issues are not supported by Gitee Provider.
         
         API: GET /repos/{owner}/{repo}/pulls/{number}/comments
-             GET /repos/{owner}/{repo}/issues/{number}/comments
+        
+        Raises:
+            NotImplementedError: If called in non-PR context
         """
-        if self.enabled_issue:
-            index = self.issue_number
-            endpoint = f"/repos/{self.owner}/{self.repo}/issues/{index}/comments"
-        elif self.enabled_pr:
-            index = self.pr_number
-            endpoint = f"/repos/{self.owner}/{self.repo}/pulls/{index}/comments"
-        else:
-            self.logger.error("Neither PR nor issue URL provided.")
-            return []
+        if not self.enabled_pr:
+            error_msg = "get_issue_comments() is not supported for Issues in Gitee Provider. Only Pull Request comments are supported."
+            self.logger.error(error_msg)
+            raise NotImplementedError(error_msg)
+        
+        index = self.pr_number
+        endpoint = f"/repos/{self.owner}/{self.repo}/pulls/{index}/comments"
 
         comments = self._api_request('GET', endpoint)
         
@@ -960,11 +928,19 @@ class GiteeProvider(GitProvider):
 
     def publish_description(self, pr_title: str, pr_body: str) -> Optional[bool]:
         """
-        Update PR title and description
+        Update PR title and description - Issues are not supported.
         
         API: PATCH /repos/{owner}/{repo}/pulls/{number}
+        
+        Raises:
+            NotImplementedError: If called in non-PR context
         """
-        index = self.pr_number if self.enabled_pr else self.issue_number
+        if not self.enabled_pr:
+            error_msg = "publish_description() is not supported for Issues in Gitee Provider. Only Pull Requests are supported."
+            self.logger.error(error_msg)
+            raise NotImplementedError(error_msg)
+        
+        index = self.pr_number
         
         payload = {
             "title": pr_title,
@@ -979,8 +955,7 @@ class GiteeProvider(GitProvider):
             return False
 
         # Refresh PR data
-        if self.enabled_pr:
-            self.pr = DictToObject(self._api_request('GET', endpoint))
+        self.pr = DictToObject(self._api_request('GET', endpoint))
         
         self.logger.info("PR description updated successfully")
         return True
@@ -1048,11 +1023,13 @@ class GiteeProvider(GitProvider):
                 self.logger.error("Comment ID not found")
                 return
             
-            # Determine endpoint
-            if self.enabled_pr:
-                endpoint = f"/repos/{self.owner}/{self.repo}/pulls/comments/{comment_id}"
-            else:
-                endpoint = f"/repos/{self.owner}/{self.repo}/issues/comments/{comment_id}"
+            # Determine endpoint - Gitee Provider only supports PR comments
+            if not self.enabled_pr:
+                error_msg = "Cannot remove comment: Gitee Provider only supports Pull Request comments."
+                self.logger.error(error_msg)
+                raise NotImplementedError(error_msg)
+            
+            endpoint = f"/repos/{self.owner}/{self.repo}/pulls/comments/{comment_id}"
             
             result = self._api_request('DELETE', endpoint)
             
